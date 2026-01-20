@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pixel Breaker</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+
+        h1 {
+            color: #ff6b9d;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 4px 4px 0 #4a0080;
+            letter-spacing: 4px;
+        }
+
+        .score-board {
+            display: flex;
+            gap: 40px;
+            margin-bottom: 15px;
+            color: #00fff5;
+            font-size: 1.2rem;
+        }
+
+        .score-board span {
+            text-shadow: 2px 2px 0 #006666;
+        }
+
+        #gameCanvas {
+            border: 4px solid #ff6b9d;
+            box-shadow: 0 0 20px #ff6b9d44, inset 0 0 50px #00000055;
+            image-rendering: pixelated;
+            cursor: none;
+        }
+
+        .instructions {
+            color: #888;
+            margin-top: 15px;
+            font-size: 0.9rem;
+        }
+
+        .instructions span {
+            color: #ffdd57;
+        }
+
+        #startScreen, #gameOverScreen {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: rgba(26, 26, 46, 0.95);
+            padding: 40px;
+            border: 4px solid #ff6b9d;
+            border-radius: 8px;
+            z-index: 10;
+        }
+
+        #gameOverScreen {
+            display: none;
+        }
+
+        .btn {
+            background: linear-gradient(180deg, #ff6b9d 0%, #c44569 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.3rem;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            margin-top: 20px;
+            box-shadow: 0 4px 0 #8b2a4a;
+            transition: all 0.1s;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 0 #8b2a4a;
+        }
+
+        .btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #8b2a4a;
+        }
+
+        #finalScore {
+            color: #00fff5;
+            font-size: 2rem;
+            margin: 10px 0;
+        }
+
+        .game-over-text {
+            color: #ff6b9d;
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>PIXEL BREAKER</h1>
+    <div class="score-board">
+        <span>SCORE: <span id="score">0</span></span>
+        <span>LIVES: <span id="lives">3</span></span>
+        <span>LEVEL: <span id="level">1</span></span>
+    </div>
+    <canvas id="gameCanvas" width="600" height="500"></canvas>
+    <p class="instructions">Move <span>MOUSE</span> to control paddle | <span>CLICK</span> to launch ball | <span>P</span> to pause</p>
+
+    <div id="startScreen">
+        <h1 style="font-size: 2rem;">PIXEL BREAKER</h1>
+        <p style="color: #888; margin: 20px 0;">Break all the blocks!</p>
+        <button class="btn" id="startBtn">START GAME</button>
+    </div>
+
+    <div id="gameOverScreen">
+        <p class="game-over-text">GAME OVER</p>
+        <p style="color: #888;">Final Score:</p>
+        <p id="finalScore">0</p>
+        <button class="btn" id="restartBtn">PLAY AGAIN</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score');
+        const livesEl = document.getElementById('lives');
+        const levelEl = document.getElementById('level');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const finalScoreEl = document.getElementById('finalScore');
+
+        // Game state
+        let score = 0;
+        let lives = 3;
+        let level = 1;
+        let gameRunning = false;
+        let paused = false;
+        let ballLaunched = false;
+
+        // Paddle
+        const paddle = {
+            width: 100,
+            height: 15,
+            x: 250,
+            y: 470,
+            color: '#00fff5',
+            speed: 8
+        };
+
+        // Ball
+        const ball = {
+            x: 300,
+            y: 455,
+            radius: 8,
+            dx: 4,
+            dy: -4,
+            color: '#ffdd57',
+            speed: 5
+        };
+
+        // Blocks
+        let blocks = [];
+        const blockRows = 5;
+        const blockCols = 10;
+        const blockWidth = 54;
+        const blockHeight = 20;
+        const blockPadding = 4;
+        const blockOffsetTop = 50;
+        const blockOffsetLeft = 15;
+
+        const colors = [
+            '#ff6b9d', // pink
+            '#ff9a3c', // orange
+            '#ffdd57', // yellow
+            '#4ade80', // green
+            '#00fff5', // cyan
+            '#a78bfa'  // purple
+        ];
+
+        // Particles for effects
+        let particles = [];
+
+        function createBlocks() {
+            blocks = [];
+            for (let row = 0; row < blockRows; row++) {
+                for (let col = 0; col < blockCols; col++) {
+                    blocks.push({
+                        x: blockOffsetLeft + col * (blockWidth + blockPadding),
+                        y: blockOffsetTop + row * (blockHeight + blockPadding),
+                        width: blockWidth,
+                        height: blockHeight,
+                        color: colors[row % colors.length],
+                        alive: true,
+                        points: (blockRows - row) * 10
+                    });
+                }
+            }
+        }
+
+        function createParticles(x, y, color, count = 8) {
+            for (let i = 0; i < count; i++) {
+                particles.push({
+                    x: x,
+                    y: y,
+                    dx: (Math.random() - 0.5) * 8,
+                    dy: (Math.random() - 0.5) * 8,
+                    size: Math.random() * 6 + 2,
+                    color: color,
+                    life: 1
+                });
+            }
+        }
+
+        function updateParticles() {
+            particles = particles.filter(p => {
+                p.x += p.dx;
+                p.y += p.dy;
+                p.life -= 0.03;
+                p.size *= 0.95;
+                return p.life > 0;
+            });
+        }
+
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life;
+                ctx.fillRect(p.x - p.size/2, p.y - p.size/2, p.size, p.size);
+            });
+            ctx.globalAlpha = 1;
+        }
+
+        function drawPaddle() {
+            // Main paddle
+            ctx.fillStyle = paddle.color;
+            ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+
+            // Pixel detail
+            ctx.fillStyle = '#006666';
+            ctx.fillRect(paddle.x + 4, paddle.y + 4, paddle.width - 8, 4);
+
+            // Glow effect
+            ctx.shadowColor = paddle.color;
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = paddle.color;
+            ctx.fillRect(paddle.x, paddle.y, paddle.width, 2);
+            ctx.shadowBlur = 0;
+        }
+
+        function drawBall() {
+            ctx.beginPath();
+            ctx.fillStyle = ball.color;
+            ctx.shadowColor = ball.color;
+            ctx.shadowBlur = 15;
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Pixel highlight
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(ball.x - 3, ball.y - 3, 3, 3);
+        }
+
+        function drawBlocks() {
+            blocks.forEach(block => {
+                if (!block.alive) return;
+
+                // Main block
+                ctx.fillStyle = block.color;
+                ctx.fillRect(block.x, block.y, block.width, block.height);
+
+                // Highlight
+                ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                ctx.fillRect(block.x, block.y, block.width, 4);
+
+                // Shadow
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fillRect(block.x, block.y + block.height - 4, block.width, 4);
+            });
+        }
+
+        function movePaddle(mouseX) {
+            paddle.x = mouseX - paddle.width / 2;
+
+            // Keep paddle in bounds
+            if (paddle.x < 0) paddle.x = 0;
+            if (paddle.x + paddle.width > canvas.width) {
+                paddle.x = canvas.width - paddle.width;
+            }
+
+            // If ball not launched, move with paddle
+            if (!ballLaunched) {
+                ball.x = paddle.x + paddle.width / 2;
+            }
+        }
+
+        function updateBall() {
+            if (!ballLaunched) return;
+
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            // Wall collisions - push ball away and ensure strong bounce
+            if (ball.x - ball.radius <= 0) {
+                ball.x = ball.radius + 1; // Push away from wall
+                ball.dx = Math.abs(ball.dx); // Force positive (rightward)
+                if (Math.abs(ball.dx) < 3) ball.dx = 3; // Minimum horizontal speed
+                ball.dy += (Math.random() - 0.5) * 2;
+                createParticles(ball.x, ball.y, '#fff', 4);
+            }
+
+            if (ball.x + ball.radius >= canvas.width) {
+                ball.x = canvas.width - ball.radius - 1; // Push away from wall
+                ball.dx = -Math.abs(ball.dx); // Force negative (leftward)
+                if (Math.abs(ball.dx) < 3) ball.dx = -3; // Minimum horizontal speed
+                ball.dy += (Math.random() - 0.5) * 2;
+                createParticles(ball.x, ball.y, '#fff', 4);
+            }
+
+            if (ball.y - ball.radius <= 0) {
+                ball.y = ball.radius + 1; // Push away from wall
+                ball.dy = Math.abs(ball.dy); // Force positive (downward)
+                if (Math.abs(ball.dy) < 3) ball.dy = 3; // Minimum vertical speed
+                ball.dx += (Math.random() - 0.5) * 2;
+                createParticles(ball.x, ball.y, '#fff', 4);
+            }
+
+            // Paddle collision
+            if (ball.y + ball.radius >= paddle.y &&
+                ball.y - ball.radius <= paddle.y + paddle.height &&
+                ball.x >= paddle.x &&
+                ball.x <= paddle.x + paddle.width) {
+
+                // Calculate angle based on where ball hits paddle
+                let hitPos = (ball.x - paddle.x) / paddle.width;
+                let angle = hitPos * 140 - 70; // -70 to 70 degrees
+                let speed = Math.sqrt(ball.dx * ball.dx + ball.dy * ball.dy);
+
+                ball.dx = speed * Math.sin(angle * Math.PI / 180);
+                ball.dy = -Math.abs(speed * Math.cos(angle * Math.PI / 180));
+
+                ball.y = paddle.y - ball.radius;
+                createParticles(ball.x, ball.y, paddle.color, 6);
+            }
+
+            // Block collisions
+            blocks.forEach(block => {
+                if (!block.alive) return;
+
+                if (ball.x + ball.radius > block.x &&
+                    ball.x - ball.radius < block.x + block.width &&
+                    ball.y + ball.radius > block.y &&
+                    ball.y - ball.radius < block.y + block.height) {
+
+                    block.alive = false;
+                    ball.dy *= -1;
+                    score += block.points;
+                    scoreEl.textContent = score;
+                    createParticles(block.x + block.width/2, block.y + block.height/2, block.color, 12);
+
+                    // Check win
+                    if (blocks.every(b => !b.alive)) {
+                        levelUp();
+                    }
+                }
+            });
+
+            // Ball out of bounds
+            if (ball.y > canvas.height) {
+                lives--;
+                livesEl.textContent = lives;
+
+                if (lives <= 0) {
+                    gameOver();
+                } else {
+                    resetBall();
+                }
+            }
+        }
+
+        function resetBall() {
+            ballLaunched = false;
+            ball.x = paddle.x + paddle.width / 2;
+            ball.y = paddle.y - ball.radius - 5;
+            ball.dx = (Math.random() > 0.5 ? 1 : -1) * ball.speed;
+            ball.dy = -ball.speed;
+        }
+
+        function levelUp() {
+            level++;
+            levelEl.textContent = level;
+            ball.speed += 0.5;
+            createBlocks();
+            resetBall();
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            finalScoreEl.textContent = score;
+            gameOverScreen.style.display = 'flex';
+        }
+
+        function startGame() {
+            score = 0;
+            lives = 3;
+            level = 1;
+            ball.speed = 5;
+            scoreEl.textContent = score;
+            livesEl.textContent = lives;
+            levelEl.textContent = level;
+            createBlocks();
+            resetBall();
+            gameRunning = true;
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            gameLoop();
+        }
+
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid pattern
+            ctx.strokeStyle = '#2a2a4e';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < canvas.width; i += 20) {
+                ctx.beginPath();
+                ctx.moveTo(i, 0);
+                ctx.lineTo(i, canvas.height);
+                ctx.stroke();
+            }
+            for (let i = 0; i < canvas.height; i += 20) {
+                ctx.beginPath();
+                ctx.moveTo(0, i);
+                ctx.lineTo(canvas.width, i);
+                ctx.stroke();
+            }
+
+            drawBlocks();
+            drawPaddle();
+            drawBall();
+            drawParticles();
+
+            if (paused) {
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ff6b9d';
+                ctx.font = '40px Courier New';
+                ctx.textAlign = 'center';
+                ctx.fillText('PAUSED', canvas.width/2, canvas.height/2);
+            }
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            if (!paused) {
+                updateBall();
+                updateParticles();
+            }
+            draw();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Event listeners - track mouse on entire document so paddle moves even outside canvas
+        document.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            movePaddle(mouseX);
+        });
+
+        canvas.addEventListener('click', () => {
+            if (gameRunning && !ballLaunched) {
+                ballLaunched = true;
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'p' || e.key === 'P') {
+                if (gameRunning) {
+                    paused = !paused;
+                }
+            }
+        });
+
+        document.getElementById('startBtn').addEventListener('click', startGame);
+        document.getElementById('restartBtn').addEventListener('click', startGame);
+
+        // Initial draw
+        createBlocks();
+        draw();
+    </script>
+</body>
+</html>
